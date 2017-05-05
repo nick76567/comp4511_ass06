@@ -202,7 +202,7 @@ static unsigned int hook_func_in(unsigned int hooknum, struct sk_buff *skb,
                     flow->bytecount, flow->bytedropcount);
 		return NF_ACCEPT;
 	}
-*/	
+	
     //printk(KERN_INFO "[ACCEPT] TCP \n");
     return NF_ACCEPT;
 }
