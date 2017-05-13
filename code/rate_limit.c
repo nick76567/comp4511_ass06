@@ -34,8 +34,7 @@ static struct nf_hook_ops nfho_incoming;  // Hook struct at pre-routing
 
 static unsigned long timeout = 0;
 static unsigned long start = 0;
-static unsigned int total_payload = 0;
-static int expect_total_payload; 
+static int expect_total_payload = 0; 
 /*
 static unsigned long old_jiffies = 0;
 static unsigned long ticks;
@@ -128,8 +127,8 @@ static unsigned int hook_func_in(unsigned int hooknum, struct sk_buff *skb,
 	flow = &flist[ hash(&f) ]; 
 
 	if ( tcp_header->fin) {
-		printk(KERN_INFO "[Finish rate=%d] time: %lu receive/drop(bytes): %u/%u",
-				rate, (jiffies - start) / HZ, flow->bytecount, flow->bytedropcount);
+		printk(KERN_INFO "[Finish rate=%d] t=%lu ms, receive/drop(bytes): %u/%u\n",
+				rate, (jiffies - start) * ((10000/HZ)/10), flow->bytecount, flow->bytedropcount);
 		reset_flow(flow);
 	}
 	if ( payload_len <= 0)
@@ -137,72 +136,34 @@ static unsigned int hook_func_in(unsigned int hooknum, struct sk_buff *skb,
 	
 	
 	if(start == 0) start = jiffies;
-	expect_total_payload = HZ * (((((1000 * 10) / HZ))/10)) * 2 * rate;
 	
-	
-	
-	if(time_before(jiffies, timeout)){
-		//int expect_total_payload = HZ * (((((1000 * 10) / HZ))/10)) * rate;
-		
-		
-		if(total_payload > expect_total_payload){
-			
-			printk(KERN_INFO "first total_payload: %u\n expected payload: %d\n total time pasted: %lu\n",
-							total_payload,
-							expect_total_payload,
-							jiffies - start);
-		
+
+	if(time_before(jiffies, timeout)){	
+		if(expect_total_payload <= 0){
 			
 			flow->dropcount++;
 			flow->bytedropcount += payload_len;
+					
 			return NF_DROP;
+		}else{		
+			flow->pktcount++;
+			flow->bytecount += payload_len;
+			expect_total_payload -= payload_len;
+			return NF_ACCEPT;
 		}
-
-		printk(KERN_INFO "second total_payload: %u\n expected payload: %d\n total time pasted: %lu\n",
-							total_payload,
-							expect_total_payload,
-							jiffies - start);
-		
-		
-		flow->pktcount++;
-		flow->bytecount += payload_len;
-		total_payload += payload_len;
-		return NF_ACCEPT;
 	}else{
 		timeout = jiffies + HZ;
-		total_payload = 0;
-		
-		printk(KERN_INFO "third total_payload: %u\n expected payload: %d\n total time pasted: %lu\n",
-							total_payload,
-							expect_total_payload,
-							jiffies - start);
+		expect_total_payload = 1650 * rate;
 		
 		flow->pktcount++;
 		flow->bytecount += payload_len;
-		total_payload += payload_len;
+		expect_total_payload -= payload_len;
+		
+		
 		return NF_ACCEPT;
 	}
 
-	if ( ) { //pktcount current stat, pcount default 1000
-		flow->dropcount++;
-		flow->bytedropcount += payload_len;
-                printk(KERN_INFO "[FORCEDROP]: [%pI4:%d->%pI4:%d] payload:%d  pkts(accept/drop)  %d:%d  bytes(accept/drop) %d:%d\n", 
-                     &f.local_ip, ntohs(f.local_port), 
-                     &f.remote_ip, ntohs(f.remote_port), 
-                     payload_len, flow->pktcount, flow->dropcount, 
-                    flow->bytecount, flow->bytedropcount);
-		return NF_DROP;
-	} else {
-		flow->pktcount++;
-		flow->bytecount += payload_len;		
-                printk(KERN_INFO "[ACCEPTFLOW]: [%pI4:%d->%pI4:%d] payload:%d  pkts(accept/drop)  %d:%d  bytes(accept/drop) %d:%d\n", 
-                     &f.local_ip, ntohs(f.local_port), 
-                     &f.remote_ip, ntohs(f.remote_port), 
-                     payload_len, flow->pktcount, flow->dropcount, 
-                    flow->bytecount, flow->bytedropcount);
-		return NF_ACCEPT;
-	}
-	
+    }
     //printk(KERN_INFO "[ACCEPT] TCP \n");
     return NF_ACCEPT;
 }
@@ -218,11 +179,9 @@ int init_module(void) {
     	nfho_incoming.pf = PF_INET;				// IPV4 packets
     	nfho_incoming.priority = NF_IP_PRI_FIRST;		// set to the highest priority 
     	nf_register_hook(&nfho_incoming);			// register hook
-    	printk(KERN_INFO "[Init] Flow Module at port %d\n", port);
     	return 0;
 }
 
 void cleanup_module(void) {
     nf_unregister_hook(&nfho_incoming);
-    printk(KERN_INFO "[Exit] Flow  Module\n");
 }
